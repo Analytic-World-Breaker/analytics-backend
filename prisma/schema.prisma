@@ -17,6 +17,13 @@ enum Role {
   SUPERADMIN
 }
 
+enum SubscriptionPlan {
+  FREE
+  BASIC
+  PRO
+  ENTERPRISE
+}
+
 model User {
   id            String   @id @default(uuid())
   email         String   @unique
@@ -24,9 +31,42 @@ model User {
   firstName     String?
   lastName      String?
   role          Role     @default(USER)
+  plan          SubscriptionPlan @default(FREE)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  // Relationships can be added here as we progress
-  // projects Project[]
+  projects      Project[]
+  usage         Usage?
+}
+
+model Usage {
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id])
+  aiCallsCount  Int      @default(0)
+  storageUsed   BigInt   @default(0) // in bytes
+  lastResetAt   DateTime @default(now())
+}
+
+model Project {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  files       File[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model File {
+  id          String   @id @default(uuid())
+  fileName    String
+  fileUrl     String
+  fileType    String
+  size        Int
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id])
+  status      String   @default("UPLOADED") // UPLOADED, PROCESSING, COMPLETED, FAILED
+  createdAt   DateTime @default(now())
 }

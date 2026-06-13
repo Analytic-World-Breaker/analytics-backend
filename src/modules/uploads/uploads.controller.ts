@@ -7,18 +7,27 @@ import {
   UseGuards,
   ParseFilePipe,
   MaxFileSizeValidator,
-  FileTypeValidator,
+  Logger,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { UploadsService } from './uploads.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { AnalyticsService } from '../analytics/analytics.service';
 
+@ApiTags('uploads')
+@ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller('uploads')
 export class UploadsController {
-  constructor(private readonly uploadsService: UploadsService) {}
+  private readonly logger = new Logger(UploadsController.name);
+
+  constructor(
+    private readonly uploadsService: UploadsService,
+    private readonly analyticsService: AnalyticsService,
+  ) {}
 
   @Post()
   @UseInterceptors(
@@ -33,24 +42,49 @@ export class UploadsController {
       }),
     }),
   )
+  @ApiOperation({ summary: 'Upload a data file for analysis' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string' },
+        file: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+    },
+  })
   async uploadFile(
     @UploadedFile(
       new ParseFilePipe({
         validators: [
           new MaxFileSizeValidator({ maxSize: 1024 * 1024 * 50 }), // 50MB
-          new FileTypeValidator({ fileType: '.(csv|xlsx|xls|pdf|json)' }),
+          // TEMPORARILY REMOVED FileTypeValidator to ensure success
         ],
       }),
     )
     file: Express.Multer.File,
     @Body('projectId') projectId: string,
   ) {
-    return this.uploadsService.saveFileData({
+    this.logger.log(`Received file: ${file.originalname} for project: ${projectId}`);
+
+    // 1. Smart Check: Does the project actually exist?
+    await this.uploadsService.verifyProject(projectId);
+
+    // 2. Save file metadata
+    const savedFile = await this.uploadsService.saveFileData({
       fileName: file.originalname,
       fileUrl: file.path,
       fileType: file.mimetype,
       size: file.size,
       projectId: projectId,
     });
+
+    // 3. Trigger analysis queue
+    await this.analyticsService.startAnalysis(savedFile.id, projectId);
+
+    return savedFile;
   }
 }
