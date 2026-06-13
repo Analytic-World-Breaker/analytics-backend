@@ -1,0 +1,23 @@
+import { Controller, Get, UseGuards, Param } from '@nestjs/common';
+import { AdminService } from './admin.service';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { Role } from '@prisma/client';
+
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(Role.ADMIN, Role.SUPERADMIN)
+@Controller('admin')
+export class AdminController {
+  constructor(private readonly adminService: AdminService) {}
+
+  @Get('stats')
+  getStats() {
+    return this.adminService.getSystemStats();
+  }
+
+  @Get('usage/:userId')
+  getUserUsage(@Param('userId') userId: string) {
+    return this.adminService.getUserUsage(userId);
+  }
+}
